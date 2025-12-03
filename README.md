@@ -4,9 +4,11 @@ Asteroids - Apple ][ clone in Html + Javascript
 
 
 Screenshots:
-[![Asteroids](https://albertonellifun.github.io/asteroids/screenshot1.jpg)](https://albertonellifun.github.io/asteroids/screenshot1.jpg)
+[![Asteroids - default B/W](https://albertonellifun.github.io/asteroids/screenshot1.jpg)](https://albertonellifun.github.io/asteroids/screenshot1.jpg)
 
-[![Asteroids](https://albertonellifun.github.io/asteroids/screenshot2.jpg)](https://albertonellifun.github.io/asteroids/screenshot2.jpg)
+[![Asteroids - filled colors](https://albertonellifun.github.io/asteroids/screenshot2.jpg)](https://albertonellifun.github.io/asteroids/screenshot2.jpg)
+
+[![Asteroids - texturized](https://albertonellifun.github.io/asteroids/screenshot3.jpg)](https://albertonellifun.github.io/asteroids/screenshot3.jpg)
 
 
 ## Licenza
