@@ -45,7 +45,7 @@
   //palette
   const COLORS = {
     BLACK:  { dark: '#000', light: '#444' },
-    WHITE:  { dark: '#ccc', light: '#fff' },
+    WHITE:  { dark: '#bbb', light: '#fff' },
 	GREEN:  { dark: '#0a0', light: '#5f5' },
 	PURPLE: { dark: '#c0c', light: '#f0f' },
 	GRAY:   { dark: '#666', light: '#999' },
@@ -63,11 +63,21 @@
   let godMode = false;
   let bw = true;
   let fill = false;
+  let texture = false;
+  let rockTexture = null;
   
   //controlli input
   const keys = new Set();
   window.addEventListener('keydown', (e)=> {
     keys.add(e.code);
+	
+	if(keys.has('KeyR')) { resetGame(); keys.delete('KeyR'); }
+	if(keys.has('KeyB')) { bw = !bw; keys.delete('KeyB'); }
+	if(keys.has('KeyF')) { fill = !fill; keys.delete('KeyF'); }
+	if(keys.has('KeyG')) { godMode = !godMode; keys.delete('KeyG'); }
+	if(keys.has('KeyT')) { texture = !texture; keys.delete('KeyT'); }
+	if(keys.has('KeyP')) { paused = !paused; keys.delete('KeyP'); }
+	
     //evita scrolling con arrow/space
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
   }, { passive: false });
@@ -114,15 +124,6 @@
         this.cooldown = 0.15;
         bullets.push(new Bullet(this.x, this.y, this.angle, Math.hypot(this.vx,this.vy), this.color));
       }
-	  
-	  if(keys.has('KeyR')) { resetGame(); console.log('reset'); }
-	  if(keys.has('KeyB')) { bw = true; console.log('bw'); }
-	  if(keys.has('KeyC')) { bw = false; console.log('color'); }
-	  if(keys.has('KeyF')) { fill = true; console.log('fill'); }
-	  if(keys.has('KeyV')) { fill = false; console.log('void'); }
-	  if(keys.has('KeyG')) { godMode = true; console.log('godMode'); }
-	  if(keys.has('KeyH')) { godMode = false; console.log('human'); }
-	  
     }
 	
 	render(ctx){
@@ -133,13 +134,20 @@
         ctx.rotate(this.angle);
         ctx.beginPath();
         ctx.moveTo(7, 0);     //punta
-        ctx.lineTo(-6, -4);    //sinistra
-	    ctx.lineTo(-4, 0);     //rientranza
-        ctx.lineTo(-6, 4);     //destra
+        ctx.lineTo(-6, -4);   //sinistra
+	    ctx.lineTo(-4, 0);    //rientranza
+        ctx.lineTo(-6, 4);    //destra
         ctx.closePath();
         ctx.strokeStyle = this.color.dark;
         ctx.lineWidth = 1;
-		if(fill) { ctx.fillStyle = this.color.light; ctx.fill(); }
+		if(fill) { 
+		    const grad = ctx.createLinearGradient(0, -4, 0, 4);
+            grad.addColorStop(0, this.color.light);
+			grad.addColorStop(0.55, this.color.dark);
+			grad.addColorStop(1, this.color.dark);
+		    ctx.fillStyle = grad;//this.color.light; 
+			ctx.fill(); 
+		}
         ctx.stroke();
 		
 		
@@ -187,7 +195,7 @@
       this.angle = rand(0, Math.PI*2);
       this.spin = rand(-0.6, 0.6);
       this.radius = size*5;//raggio per bounding
-      const sides = Math.floor(rand(5, 5+size*2)); // almeno 5 lati
+      const sides = Math.floor(rand(6, 6+size*2)); // almeno 6 lati
       this.poly = makeAsteroidPolygon(sides, this.radius, this.radius*0.4);
       this.color = color;
     }
@@ -199,7 +207,26 @@
     render(ctx){
 	  ctx.save();
 	  ctx.translate(this.x, this.y);
-      ctx.rotate(this.angle);
+      
+	  //shadow
+	  if(fill){
+	    let delta = {x: -3, y:-1};
+		ctx.beginPath();
+        const p0 = rotatePoint(this.poly[0], this.angle);
+        ctx.moveTo(p0.x + delta.x, p0.y + delta.y);
+
+        for(let i=1; i<this.poly.length; i++){
+          const p = rotatePoint(this.poly[i], this.angle);
+          ctx.lineTo(p.x + delta.x, p.y + delta.y);
+        }
+		
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+	    ctx.fill();
+	  }
+	  
+	  ctx.rotate(this.angle);
+	  
 	  
 	  //outer
       ctx.beginPath();
@@ -210,8 +237,33 @@
       ctx.closePath();
       ctx.strokeStyle = this.color.dark;
       ctx.lineWidth = 1;
-	  if(fill) { ctx.fillStyle = this.color.light; ctx.fill(); }
+	  
+	  if(fill) { 
+	    
+		
+
+		
+		const grad = ctx.createRadialGradient(
+          -this.radius*0.3, -this.radius*0.3, this.radius*0.2,
+          0, 0, this.radius*1.2);
+		grad.addColorStop(0, this.color.light);
+        grad.addColorStop(1, this.color.dark);
+		
+		ctx.fillStyle = grad;//this.color.light; 
+		ctx.fill();
+		
+		if(texture) {
+		  ctx.globalCompositeOperation = "luminosity";//"multiply";//multiply diventa trasparente
+		  ctx.fillStyle = rockTexture;
+		  ctx.fill();
+		  ctx.globalCompositeOperation = "source-over";
+		}
+		
+		
+	  }
+	  
       ctx.stroke();
+	  
 	  
 	  
 	  //dimensione
@@ -232,9 +284,37 @@
     }
     return pts;
   }
+  
+  function rotatePoint(p, angle){
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    return {
+      x: p.x * cos - p.y * sin,
+      y: p.x * sin + p.y * cos
+    };
+  }
+  
+  
 
-
-
+  function generateRockTexture() {
+      const c = document.createElement("canvas");
+      c.width = 10;
+      c.height = 10;
+      const ctx = c.getContext("2d");
+      const colors = [ "#ccc", "#999", "#666", "#333" ];
+  
+      //disegna puntini random
+      for (let i = 0; i < 75; i++) {
+          const x = rand(0, 10);
+          const y = rand(0, 10);
+          ctx.fillStyle = colors[Math.floor(rand(0, colors.length))];
+          ctx.fillRect(x, y, 1, 1);
+      }
+      return ctx.createPattern(c, "repeat");
+  }
+  
+  
+  
   //proiettili
   class Bullet {
     constructor(x,y,angle,shipSpeed,color){
@@ -427,17 +507,19 @@
 
 
 
-  function randomColor(i) {
-    const values = Object.values(COLORS); // array di valori (#hex)
-    const idx = ((Math.random() * (values.length - 1)) | 0) + 1;
-    return i ? values[i] : values[idx];
+  function randomColor() {
+    if(bw) return COLORS.GREEN;
+    const values = Object.values(COLORS);// array di valori (#hex)
+	const idx = rand(2, values.length) | 0;
+    return values[idx];
   }
 
   function spawnAsteroids(count) {
     for(let i=0;i<count;i++){
-      let x = rand(0, BASE_W), y = rand(0, BASE_H);
+      let x = rand(0, BASE_W);
+	  let y = rand(0, BASE_H);
       if(Math.hypot(x-ship.x,y-ship.y)<40){ i--; continue; }
-      const r = new Asteroid(x, y, 5-i, bw ? randomColor(2) : randomColor(0));
+      const r = new Asteroid(x, y, 5-i, randomColor());
       rocks.push(r);
     }
   }
@@ -460,10 +542,43 @@
   //divide l'asteroide solo se e' abbastanza grande
   function splitRock(rock){
     if(rock.size>1){
+	
+	
+	  //direzione del colpo -> centro asteroide
+	  let dx = rock.x - ship.x;
+      let dy = rock.y - ship.y;
+	  
+	  //normalizzata
+	  const len = Math.hypot(dx, dy);
+      dx /= len;
+      dy /= len;
+	  
+	  //questa e' la normale/perpendicolare
+	  let nx = -dy;
+      let ny = dx;
+	  
+	  //normalizzata
+	  const nlen = Math.hypot(nx, ny);
+      nx /= nlen;
+      ny /= nlen;
+		
+	  const angle = rand(0, Math.PI * 2);  // direzione casuale
+	  const dist  = rock.radius * 0.5;           // distanza iniziale
+	  const parentSpeed = Math.hypot(rock.vx, rock.vy); //velocita padre
+	  
 	  for(let i=0;i<2;i++){
-        const r = new Asteroid(rock.x, rock.y, rock.size-1, rock.color);
-        r.vx += rand(-30,30); 
-		r.vy += rand(-30,30);
+        const dir = (i === 0 ? 1 : -1);
+		const px = rock.x + nx * dist * dir;
+        const py = rock.y + ny * dist * dir;
+		const r = new Asteroid(px, py, rock.size - 1, rock.color);
+		
+		r.vx = rock.vx + nx * dir * parentSpeed * rand(1,2);
+        r.vy = rock.vy + ny * dir * parentSpeed * rand(1,2);
+		
+		//const r = new Asteroid(rock.x, rock.y, rock.size-1, rock.color);
+        //r.vx += rand(-30,30); 
+		//r.vy += rand(-30,30);
+				
         rocks.push(r);
       }
     }
@@ -486,15 +601,17 @@
 	score = baseScore;
 	stars.length=0;
 	spawnStars(50);
+	rockTexture = generateRockTexture();
   }
 
   //loop
   let last = performance.now();
+  let paused = false;
   
   function frame(now){
     const dt = Math.min(1/30, (now-last)/1000); 
 	last = now;
-    update(dt);
+    if(!paused) update(dt);
     render();
     requestAnimationFrame(frame);
   }
@@ -610,12 +727,14 @@
 	octx.font = '8px monospace';
 	octx.fillStyle = COLORS.BLACK.light;
 	octx.fillText('ASTEROIDS - Apple ][ clone', 165, 10);
-	let testo = bw ? '[B]w/Color' : 'Bw/[C]olor';
-	testo += '  -  ';
-	testo += fill ? '[F]ill/Void' : 'Fill/[V]oid';
-	testo += '  -  ';
-	testo += godMode ? '[G]od/Human' : 'God/[H]uman';
-	testo += '  -  ';
+	let testo = '[B]w:'+bw;
+	testo += '  ';
+	testo += '[F]ill:'+fill;
+	testo += '  ';
+	testo += '[T]exture:'+texture;
+	testo += '  ';
+	testo += '[G]od:'+godMode;
+	testo += '  ';
 	testo += '[R]eset';
 	octx.fillText(testo, 0, 190);
 	
@@ -624,6 +743,7 @@
     vctx.drawImage(off, 0, 0, view.width, view.height);
   }
 
+  rockTexture = generateRockTexture();
   spawnAsteroids(3);
   spawnStars(50);
   
