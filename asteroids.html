@@ -18,10 +18,24 @@
       image-rendering: pixelated;
       border: 1px solid #222;
     }
+	#scanlines-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      pointer-events: none;
+      background: repeating-linear-gradient(to right, transparent, transparent 0px, rgba(0, 0, 0, 0.33) 2px, transparent 4px);
+      background-size: 100% 4px;
+      opacity: 1;
+      display:none;
+      z-index: 10;
+    }
   </style>
 </head>
 <body>
 
+<div id="scanlines-overlay"></div>
 <canvas id="view" width="840" height="576"></canvas>
 
 <script>
@@ -62,10 +76,15 @@
   };
 
   let score = 0;
-  let godMode = false;
-  let bw = true;
-  let fill = false;
-  let texture = false;
+  let godMode = false;//per debug
+  let bw = true;//tutto verde o a colori?
+  let fill = false;//riempimento asteroidi
+  let scanLinesEnabled = false;//a noi piacciono i monitor vintage
+  
+  let isMute = true;//perche' il silenzio e' d'oro
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();//definito una sola volta
+  
+  let texture = false;//asteroidi testurizzati
   let rockTexture = null;
   
   //controlli input
@@ -73,12 +92,17 @@
   window.addEventListener('keydown', (e)=> {
     keys.add(e.code);
 	
-	if(keys.has('KeyR')) { resetGame(); keys.delete('KeyR'); }
+	if(keys.has('KeyR')) { resetGame(); keys.delete('KeyR'); playBeep(); }
 	if(keys.has('KeyB')) { bw = !bw; keys.delete('KeyB'); }
 	if(keys.has('KeyF')) { fill = !fill; keys.delete('KeyF'); }
 	if(keys.has('KeyG')) { godMode = !godMode; keys.delete('KeyG'); }
 	if(keys.has('KeyT')) { texture = !texture; keys.delete('KeyT'); }
 	if(keys.has('KeyP')) { paused = !paused; keys.delete('KeyP'); }
+	if(keys.has('KeyM')) { isMute = !isMute; keys.delete('KeyM'); }
+	if(keys.has('KeyS')) { scanLinesEnabled = !scanLinesEnabled; keys.delete('KeyS'); 
+	  if (scanLinesEnabled) document.getElementById('scanlines-overlay').style.display = 'block';
+	  else document.getElementById('scanlines-overlay').style.display = 'none';
+	}	
 	
     //evita scrolling con arrow/space
     if (['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(e.code)) e.preventDefault();
@@ -125,6 +149,7 @@
       if(keys.has('Space') && this.cooldown === 0){
         this.cooldown = 0.15;
         bullets.push(new Bullet(this.x, this.y, this.angle, Math.hypot(this.vx,this.vy), this.color));
+		playShootSound();
       }
     }
 	
@@ -397,6 +422,7 @@
       const dy = ship.y - this.y;
       const a = Math.atan2(dy, dx);
       enemyBullets.push(new EnemyBullet(this.x, this.y, a, this.color));
+	  playShootSound();
     }
     render(ctx){
       if(!this.alive) return;
@@ -644,6 +670,7 @@
 		  bullets.splice(bi,1);
 		  e.alive=false;
 		  // esplosione
+		  playShipExplosionSound();
 		  for(let i=0;i<20;i++){
 			particles.push(new Particle(e.x,e.y,rand(-80,80),rand(-80,80),rand(0.2,0.6), e.color));
 		  }
@@ -657,6 +684,7 @@
 	  if(b.life<=0){ enemyBullets.splice(bi,1); continue; }
 	  if(!godMode && ship.alive && hitCircle(ship,b)){
 		explodeShip(ship);
+		playShipExplosionSound();
 		setTimeout(function(){ resetGame(); },1000);
 	  }
 	}
@@ -677,6 +705,7 @@
             particles.push(
 				new Particle(r.x, r.y, rand(-60,60), rand(-60,60), rand(0.1,0.4), r.color));
           }
+		  playExplosionSound();
           break;
         }
       }
@@ -687,6 +716,7 @@
       for(const r of rocks){
         if(!godMode && hitCircle(ship, r)){
 		  explodeShip(ship);
+		  playShipExplosionSound();
           setTimeout(function(){ resetGame(); },1000);
           break;
         }
@@ -729,14 +759,19 @@
 	octx.font = '8px monospace';
 	octx.fillStyle = COLORS.BLACK.light;
 	octx.fillText('ASTEROIDS - Apple ][ clone', BASE_W - 116, 10);
-	let testo = '[B]w:'+bw;
-	testo += '  ';
-	testo += '[F]ill:'+fill;
-	testo += '  ';
-	testo += '[T]exture:'+texture;
-	testo += '  ';
-	testo += '[G]od:'+godMode;
-	testo += '  ';
+	function decodeBool(x) { return x ? '1' : '0'; }
+	let testo = '[B]w:'+ decodeBool(bw);
+	testo += ' ';
+	testo += '[F]ill:'+ decodeBool(fill);
+	testo += ' ';
+	testo += '[T]exture:'+ decodeBool(texture);
+	testo += ' ';
+	testo += '[G]od:'+ decodeBool(godMode);
+	testo += ' ';
+	testo += '[M]ute:'+ decodeBool(isMute);
+	testo += ' ';
+	testo += '[S]can:'+ decodeBool(scanLinesEnabled);
+	testo += ' ';
 	testo += '[R]eset';
 	octx.fillText(testo, 0, BASE_H - 2);
 	
@@ -744,6 +779,168 @@
     vctx.clearRect(0,0,view.width,view.height);
     vctx.drawImage(off, 0, 0, view.width, view.height);
   }
+  
+  
+  
+//SUONI presi in prestito da artillery clone per apple ][
+function playExplosionSound() {
+  if(isMute) return;
+  const now = audioCtx.currentTime;
+
+  // 1. Crea un generatore di Rumore Bianco (Noise Buffer)
+  const bufferSize = audioCtx.sampleRate * 0.5; // 0.5 secondi
+  const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+  const output = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    output[i] = Math.random() * 2 - 1; // Riempie il buffer con rumore casuale (statico)
+  }
+
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buffer;
+
+  // 2. Crea i nodi di Guadagno e Filtro
+  const noiseGain = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+
+  // Imposta il filtro per un suono "sordo" e breve (filtro passa basso)
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(1000, now); // Frequenza di taglio iniziale
+  filter.frequency.exponentialRampToValueAtTime(10, now + 0.3); // Decadimento rapido della frequenza
+
+  // Connessioni: Rumore -> Filtro -> Guadagno -> Destinazione
+  noise.connect(filter);
+  filter.connect(noiseGain);
+  noiseGain.connect(audioCtx.destination);
+
+  // 3. Envelope (ADSR)
+  noiseGain.gain.setValueAtTime(0.5, now); // Volume iniziale
+  // Decay rapido del volume (il "botto" finisce subito)
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.3); 
+
+  // 4. Avvia e Ferma
+  noise.start(now);
+  noise.stop(now + 0.3);
+}
+
+function playShootSound() {
+  if(isMute) return;
+    // 1. Crea l'oscillatore (il "generatore di suono")
+    const oscillator = audioCtx.createOscillator();
+    // Usa un'onda quadra per un suono "pixelato" o un'onda a dente di sega (sawtooth)
+    oscillator.type = 'square'; 
+
+    // 2. Crea un nodo del guadagno (Gain Node) per controllare il volume e l'ADSR
+    const gainNode = audioCtx.createGain();
+    
+    // Connetti: Oscillatore -> Guadagno -> Destinazione (altoparlanti)
+    oscillator.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+
+    const now = audioCtx.currentTime;
+
+    // 3. Imposta la Frequenza Iniziale e Finale (per il "pitch-drop" o "fall")
+    const startFreq = 400; // Frequenza iniziale (più alta)
+    const endFreq = 200;   // Frequenza finale (più bassa)
+    const duration = 0.15; // Durata breve in secondi
+
+    oscillator.frequency.setValueAtTime(startFreq, now);
+    // Diminuisci rapidamente la frequenza (effetto laser/sparo 8-bit)
+    oscillator.frequency.exponentialRampToValueAtTime(endFreq, now + duration);
+
+    // 4. Imposta il Volume (Envelope)
+    gainNode.gain.setValueAtTime(0.5, now); // Volume iniziale
+    // Riduci rapidamente il volume
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration); 
+    
+    // 5. Avvia e Ferma l'oscillatore
+    oscillator.start(now);
+    oscillator.stop(now + duration);
+}
+
+function playShipExplosionSound() {
+  if(isMute) return;
+    const now = audioCtx.currentTime;
+    const duration = 0.5; // Durata maggiore per l'esplosione del carro armato
+
+    // 1. Rumore Bianco (Il "Bot")
+    const bufferSize = audioCtx.sampleRate * duration;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const output = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1; 
+    }
+    const noise = audioCtx.createBufferSource();
+    noise.buffer = buffer;
+
+    const noiseGain = audioCtx.createGain();
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.setValueAtTime(2000, now);
+    filter.frequency.exponentialRampToValueAtTime(10, now + duration);
+
+    noise.connect(filter);
+    filter.connect(noiseGain);
+    
+    // 2. Tono Basso (L'effetto "WAAAH")
+    const oscillator = audioCtx.createOscillator();
+    oscillator.type = 'sawtooth'; // Tono più ricco di armoniche
+    
+    const oscGain = audioCtx.createGain();
+    
+    // Connessioni per il Tono:
+    oscillator.connect(oscGain);
+
+    // Envelope del Tono: Pitch Drop
+    oscillator.frequency.setValueAtTime(100, now); // Frequenza iniziale bassa
+    oscillator.frequency.exponentialRampToValueAtTime(10, now + duration); // Crolla a 10Hz
+
+    // 3. Unione e Decadimento del Guadagno
+    
+    // Volume del Rumore
+    noiseGain.gain.setValueAtTime(0.6, now);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration); 
+
+    // Volume del Tono
+    oscGain.gain.setValueAtTime(0.3, now);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, now + duration); 
+
+    // Unisci i due suoni e invia alla destinazione
+    noiseGain.connect(audioCtx.destination);
+    oscGain.connect(audioCtx.destination);
+
+    // 4. Avvia e Ferma
+    noise.start(now);
+    noise.stop(now + duration);
+    oscillator.start(now);
+    oscillator.stop(now + duration);
+}
+
+function playBeep() {
+  if(isMute) return;
+  const oscillator = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+
+  oscillator.type = 'square'; // Apple II usava un'onda quadra
+  oscillator.frequency.setValueAtTime(935, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+
+  oscillator.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  oscillator.start();
+  oscillator.stop(audioCtx.currentTime + 0.1); // durata 250 ms
+}
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
 
   rockTexture = generateRockTexture();
   spawnAsteroids(3);
